@@ -14,6 +14,7 @@ byte_count = 0
 while DEVICE_NAME not in ["laptop2", "laptop3"]:
     DEVICE_NAME = input("Enter device name (laptop2 / laptop3): ").strip()
 
+LAPTOP = DEVICE_NAME[-1]
 INBOX_TOPIC = f"{DEVICE_NAME}/inbox"
 OUTBOX_TOPIC = "laptop1/inbox"   # All laptops send to HUB
 SAVE_FILE = f"{DEVICE_NAME}_messages.txt"
@@ -38,8 +39,8 @@ def reporter_thread(client):
        mbps = (byte_count * 8) / 1_000_000
       
        # Send to Laptop 1 (The Brain)
-       client.publish(OUTBOX_TOPIC, "M " + str(mbps))
-       print(f"[{DEVICE_NAME}] Sent to laptop1: M {mbps}")
+       client.publish(OUTBOX_TOPIC, f"{LAPTOP}M " + str(mbps))
+       print(f"[{DEVICE_NAME}] Sent to laptop1: {LAPTOP}M {mbps}")
       
        # Optional: Debug print if traffic is flowing
        # if stats["packet_count"] > 0:
@@ -93,8 +94,8 @@ def sender_thread(client, t1):
     try:
         input_msg = time.time() - t1
         # Laptop2 and Laptop3 always send to laptop1
-        client.publish("laptop1/inbox", "L " + str(input_msg))
-        print(f"[{DEVICE_NAME}] Sent to laptop1: L {input_msg}")
+        client.publish("laptop1/inbox", f"{LAPTOP}L " + str(input_msg))
+        print(f"[{DEVICE_NAME}] Sent to laptop1: {LAPTOP}L {input_msg}")
     except KeyboardInterrupt:
         print("Exiting sender thread...")
 
