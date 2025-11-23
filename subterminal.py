@@ -74,7 +74,7 @@ def on_message(client, userdata, msg):
         counter = (counter + 1) % PACKET_COUNT
         return
     try:
-        input_msg = time.time() - t1
+        input_msg = (time.time() - t1) * (10 ** 3)
         # Laptop2 and Laptop3 always send to laptop1
         client.publish("laptop1/inbox", f"{LAPTOP}L" + str(input_msg))
         print(f"[{DEVICE_NAME}] Sent to laptop1: {LAPTOP}L{input_msg}")
