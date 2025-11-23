@@ -5,7 +5,6 @@ import os
 
 BROKER_IP = "10.141.41.70"   # HUB IP
 DEVICE_NAME = ""             # laptop1, laptop2, laptop3
-input_msg = ""
 
 # -----------------------------
 # ASK USER WHICH DEVICE THIS IS
@@ -32,8 +31,8 @@ def on_message(client, userdata, msg):
     print(f"\n[{DEVICE_NAME}] Received on {msg.topic}: {message}")
 
     # Save message to a file
-    with open(SAVE_FILE, "a") as f:
-        f.write(f"{time.ctime()} - {msg.topic}: {message}\n")
+    #with open(SAVE_FILE, "a") as f:
+     #   f.write(f"{time.ctime()} - {msg.topic}: {message}\n")
 
 
 # -----------------------------
