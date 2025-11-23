@@ -36,16 +36,11 @@ def reporter_thread(client):
        time.sleep(1.0) # Wait 1 second
       
        # Calculate Bandwidth (Bytes -> Megabits)
-       mbps = (byte_count * 23) / 1_000_000
+       bps = (byte_count * 13)
       
        # Send to Laptop 1 (The Brain)
-       client.publish(OUTBOX_TOPIC, f"{LAPTOP}M" + str(mbps))
-       print(f"[{DEVICE_NAME}] Sent to laptop1: {LAPTOP}M{mbps}")
-      
-       # Optional: Debug print if traffic is flowing
-       # if stats["packet_count"] > 0:
-       #     print(f"   (Debug) Sent stats: {report['mbps']} Mbps")
-
+       client.publish(OUTBOX_TOPIC, f"{LAPTOP}M" + str(bps))
+       print(f"[{DEVICE_NAME}] Sent to laptop1: {LAPTOP}M{bps}", byte_count)
 
        # Reset for next second
        byte_count = 0
@@ -75,22 +70,9 @@ def on_message(client, userdata, msg):
         product = num1 * num2
         time.sleep(0.000001)
 
-    if counter == 0:
-        sender_thread(client, t1)
-    counter = (counter + 1) % PACKET_COUNT
-    # Save message to a file
-    #with open(SAVE_FILE, "a") as f:
-     #   f.write(f"{time.ctime()} - {msg.topic}: {message}\n")
-
-
-# -----------------------------
-# SENDER THREAD
-# -----------------------------
-def sender_thread(client, t1):
-    # print(f"\n[{DEVICE_NAME}] Type messages to send to HUB (topic: laptop1/inbox)")
-    # print("Press Ctrl+C to exit.\n")
-
-    
+    if counter != 0:
+        counter = (counter + 1) % PACKET_COUNT
+        return
     try:
         input_msg = time.time() - t1
         # Laptop2 and Laptop3 always send to laptop1
