@@ -19,6 +19,7 @@ counts_lock = threading.Lock()
 stats_queue = queue.Queue()
 stats_list=[]
 
+manual_overrides = ("HIGH", 800) #("Priority, Bandwidth in Mbps")
 class AdaptiveRateChanger:
     def __init__(self, max_rate=10000, packet_size_bytes=1024):
         self.max_rate = max_rate
@@ -27,6 +28,11 @@ class AdaptiveRateChanger:
             'HIGH': max_rate / 3,      # packets per second
             'NEUTRAL': max_rate / 3,   # packets per second
             'LOW': max_rate / 3        # packets per second
+        }
+        self.manual_override = {
+            'HIGH': None,
+            'NEUTRAL': None,
+            'LOW': None
         }
         self.last_send_time = defaultdict(float)
         self.lock = threading.Lock()
@@ -81,10 +87,6 @@ class AdaptiveRateChanger:
                 self.last_send_time[priority] = current_time
                 return True
             return False
-
-
-    
-
 
 # -----------------------------
 # ASK USER WHICH DEVICE THIS IS
@@ -262,6 +264,11 @@ def ml_processing_thread(stats_queue, device_name):
                         }
 
                     pred = ml_model.predict(stats)
+
+                    if(manual_overrides[0] is not None and manual_overrides[1] is not None):
+                        priority, bandwidth = manual_overrides
+                        actual_bandwidths[priority] = bandwidth
+                    
                     
                     if training_enabled:
                         train_predictions, errors = ml_model.train_with_feedback(
@@ -296,6 +303,7 @@ def ml_processing_thread(stats_queue, device_name):
                                 print(f"🎉 Target accuracy reached! Training stopped.")
 
                     # Update rate limiter based on predictions
+                    
                     rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
                     rate_limiter.set_rate_from_bandwidth('NEUTRAL', pred['NEUTRAL'])
                     rate_limiter.set_rate_from_bandwidth('LOW', pred['LOW'])
