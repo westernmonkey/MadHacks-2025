@@ -36,7 +36,7 @@ def reporter_thread(client):
        time.sleep(1.0) # Wait 1 second
       
        # Calculate Bandwidth (Bytes -> Megabits)
-       mbps = (byte_count * 8) / 1_000_000
+       mbps = (byte_count * 23) / 1_000_000
       
        # Send to Laptop 1 (The Brain)
        client.publish(OUTBOX_TOPIC, f"{LAPTOP}M" + str(mbps))
