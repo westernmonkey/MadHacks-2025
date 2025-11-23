@@ -20,7 +20,7 @@ stats_list=[]
 
 manual_overrides = (None, None) #("Priority, Bandwidth in Mbps")
 class AdaptiveRateChanger:
-    def __init__(self, max_rate=10000, packet_size_bytes=1024):
+    def __init__(self, max_rate=2000, packet_size_bytes=13):
         self.max_rate = max_rate
         self.packet_size_bytes = packet_size_bytes
         self.rates = {
@@ -224,7 +224,7 @@ def ml_processing_thread(stats_queue, device_name):
     except ImportError:
         print("[ML Thread] Warning: ml_model.py not found. ML processing disabled.")
         return
-    ml_model = LiveBandwidthPredictor(max_total_bandwidth=1000.0)
+    ml_model = LiveBandwidthPredictor(max_total_bandwidth=2000.0)
     training_enabled = True
     accuracy_history = []
     target_accuracy = 70.0  # Target accuracy percentage to stop training
