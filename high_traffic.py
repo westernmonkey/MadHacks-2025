@@ -14,7 +14,7 @@ class Packet:
         """
         base = f"{self.ptype} :".encode('utf-8')
         padding_size = max(0, total_size - len(base))
-        return base + b'x' * padding_size
+        return base + f'{random.randint(11111111,99999999)}'.encode('utf-8')
 
 
 def send_udp_packets(target_ip, target_port, packet_size, pps, duration, tags):
