@@ -68,7 +68,9 @@ def udp_packet_rerouter(client, listen_ip="0.0.0.0", listen_port=5005, buffer_si
             packet_counts[tag] += 1
 
         # Reroute packet content via MQTT
-        rerouter(client, tag, content, data)
+        rerouter(client, tag.strip(), content, data)
+
+
 
 def rerouter(client, tag, content, raw_data):
     if(DEVICE_NAME != "laptop1"):
@@ -76,20 +78,36 @@ def rerouter(client, tag, content, raw_data):
 
     # Tag to topic mapping
     tag_routing = {
-        "A": "laptop1/inbox",
-        "B": "laptop2/inbox",
-        "C": "laptop3/inbox",
-        "D": "laptop4/inbox"
+        "A": "laptop2/inbox",
+        "B": "laptop3/inbox",
+        "C": "laptop4/inbox"
     }
     
     # Get target topic from mapping
     target_topic = tag_routing.get(tag)
-    
     if target_topic:
         client.publish(target_topic, content)
-        print(f"[{DEVICE_NAME}] Rerouted UDP packet to {target_topic} | TYPE: {tag} | Size: {len(raw_data)}")
+        #print(f"[{DEVICE_NAME}] Rerouted UDP packet to {target_topic} | TYPE: {tag} | Size: {len(raw_data)}")
     else:
         print(f"[{DEVICE_NAME}] Unknown tag '{tag}' - no routing rule")
+
+def stats_collector_thread(interval=5):
+    """Periodically collect packet counts and send to processing"""
+    while True:
+        time.sleep(interval)
+        
+        # Get snapshot of current counts
+        with counts_lock:
+            counts_snapshot = dict(packet_counts)
+            # Optional: reset counts after sending (for delta/incremental counting)
+            packet_counts.clear()
+        
+        # Send to stats processing
+        if counts_snapshot:
+            stats_queue.put(counts_snapshot)
+            print(f"[{DEVICE_NAME}] Stats collected: {counts_snapshot}")
+
+
 
 def sender_thread(client):
     print(f"\n[{DEVICE_NAME}] Type messages to send to HUB (topic: laptop1/inbox)")
@@ -120,7 +138,7 @@ def sender_thread(client):
             print("Exiting sender thread...")
             break
 
-
+'''
 def udp_receiver_thread(listen_ip="0.0.0.0", listen_port=5005, buffer_size=65535):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((listen_ip, listen_port))
@@ -138,7 +156,7 @@ def udp_receiver_thread(listen_ip="0.0.0.0", listen_port=5005, buffer_size=65535
             tag = "<decode error>"
 
         print(f"[{DEVICE_NAME}] UDP From {addr[0]}:{addr[1]} | TYPE: {tag} | Size: {len(decoded)}")
-
+'''
 # -----------------------------
 # MAIN PROGRAM
 # -----------------------------
@@ -152,7 +170,17 @@ client.connect(BROKER_IP, 1883, 60)
 # Run MQTT loop in a background thread
 #threading.Thread(target=client.loop_forever, daemon=True).start()
 
-# Run sender in main thread
-#sender_thread(client)
+#Run Sender Thread
+threading.Thread(target=client.loop_forever, daemon=True).start()
+# Start UDP packet rerouter thread
+threading.Thread(target=udp_packet_rerouter, args=(client,), daemon=True).start()
+#start mqtt communication thread
+threading.Thread(target=sender_thread, args=(client,), daemon=True).start()
+# Start stats collector thread
+threading.Thread(target=stats_collector_thread, daemon=True).start()
 
-udp_receiver_thread()
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print(f"\n[{DEVICE_NAME}] Exiting program...")
