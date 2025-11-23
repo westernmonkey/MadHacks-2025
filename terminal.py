@@ -23,6 +23,8 @@ stats_queue = queue.Queue()
 stats_list=[]
 
 
+
+
 manual_overrides = (None, None) #("Priority, Bandwidth in Mbps")
 class AdaptiveRateChanger:
    def __init__(self, max_rate=10000, packet_size_bytes=1024):
@@ -244,105 +246,111 @@ def stats_collector_thread(interval=5):
 
 
 def ml_processing_thread(stats_queue, device_name):
-   try:
-       from ml_brain import LiveBandwidthPredictor
-   except ImportError:
-       print("[ML Thread] Warning: ml_model.py not found. ML processing disabled.")
-       return
-   ml_model = LiveBandwidthPredictor(max_total_bandwidth=1000.0)
-   training_enabled = True
-   accuracy_history = []
-   target_accuracy = 70.0  # Target accuracy percentage to stop training
-   min_samples = 5        # Minimum samples to consider for accuracy
-   while True:
-       try:
-           time.sleep(5)  # Check every 5 seconds
-          
-           with counts_lock:
-               if not stats_queue.empty():
-                   stats = stats_queue.get()
-                   stats = list(stats.values())
-                   # Extract just the message text
+    try:
+        from ml_brain import LiveBandwidthPredictor
+    except ImportError:
+        print("[ML Thread] Warning: ml_model.py not found. ML processing disabled.")
+        return
+    ml_model = LiveBandwidthPredictor(max_total_bandwidth=1000.0)
+    training_enabled = True
+    accuracy_history = []
+    target_accuracy = 70.0  # Target accuracy percentage to stop training
+    min_samples = 5        # Minimum samples to consider for accuracy
+    while True:
+        try:
+            time.sleep(5)  # Check every 5 seconds
+           
+            with counts_lock:
+                if not stats_queue.empty():
+                    stats = stats_queue.get()
+                    stats = list(stats.values())
+                    # Extract just the message text
+                   
+                    # Call your ML model
+                    with feedback_lock:
+                        actual_bandwidths = {
+                            'HIGH': feedback_data['laptop2']['bandwidth'],
+                            'NEUTRAL': feedback_data['laptop2']['bandwidth'],
+                            'LOW': feedback_data['laptop3']['bandwidth']
+                        }
+                       
+                       
+                        latencies = {
+                            'HIGH': feedback_data['laptop2']['latency'],
+                            'NEUTRAL': feedback_data['laptop2']['latency'],
+                            'LOW': feedback_data['laptop3']['latency']
+                        }
+
+
+                    pred = ml_model.predict(stats)
+
+
+                    if(manual_overrides[0] is not None and manual_overrides[1] is not None):
+                        priority, bandwidth = manual_overrides
+                        actual_bandwidths[priority] = bandwidth
                   
-                   # Call your ML model
-                   with feedback_lock:
-                       actual_bandwidths = {
-                           'HIGH': feedback_data['laptop2']['bandwidth'],
-                           'NEUTRAL': feedback_data['laptop2']['bandwidth'],
-                           'LOW': feedback_data['laptop3']['bandwidth']
-                       }
-                      
-                      
-                       latencies = {
-                           'HIGH': feedback_data['laptop2']['latency'],
-                           'NEUTRAL': feedback_data['laptop2']['latency'],
-                           'LOW': feedback_data['laptop3']['latency']
-                       }
-
-
-                   pred = ml_model.predict(stats)
-
-
-                   if(manual_overrides[0] is not None and manual_overrides[1] is not None):
-                       priority, bandwidth = manual_overrides
-                       actual_bandwidths[priority] = bandwidth
                   
+                    if training_enabled:
+                        train_predictions, errors = ml_model.train_with_feedback(
+                            stats,
+                            actual_bandwidths,
+                            latencies
+                        )
+                      
+                        # Calculate accuracy
+                        mae_high = abs(errors[0])
+                        mae_neutral = abs(errors[1])
+                        mae_low = abs(errors[2])
+                      
+                        mape_high = (mae_high / max(actual_bandwidths['HIGH'], 0.01)) * 100
+                        mape_neutral = (mae_neutral / max(actual_bandwidths['NEUTRAL'], 0.01)) * 100
+                        mape_low = (mae_low / max(actual_bandwidths['LOW'], 0.01)) * 100
+                      
+                        accuracy_high = max(0, 100 - mape_high)
+                        accuracy_neutral = max(0, 100 - mape_neutral)
+                        accuracy_low = max(0, 100 - mape_low)
+                        accuracy_avg = (accuracy_high + accuracy_neutral + accuracy_low) / 3
+                      
+                        # Track accuracy
+                        accuracy_history.append(accuracy_avg)
+                        if len(accuracy_history) > 10:
+                            accuracy_history.pop(0)
+                      
+                        if len(accuracy_history) >= min_samples:
+                            recent_avg = sum(accuracy_history[-min_samples:]) / min_samples
+                            if recent_avg >= target_accuracy:
+                                training_enabled = False
+                                print(f"🎉 Target accuracy reached! Training stopped.")
+
+
+                    # Update rate limiter based on predictions
                   
-                   if training_enabled:
-                       train_predictions, errors = ml_model.train_with_feedback(
-                           stats,
-                           actual_bandwidths,
-                           latencies
-                       )
-                      
-                       # Calculate accuracy
-                       mae_high = abs(errors[0])
-                       mae_neutral = abs(errors[1])
-                       mae_low = abs(errors[2])
-                      
-                       mape_high = (mae_high / max(actual_bandwidths['HIGH'], 0.01)) * 1000
-                       mape_neutral = (mae_neutral / max(actual_bandwidths['NEUTRAL'], 0.01)) * 1000
-                       mape_low = (mae_low / max(actual_bandwidths['LOW'], 0.01)) * 1000
-                      
-                       accuracy_high = max(0, 100 - mape_high)
-                       accuracy_neutral = max(0, 100 - mape_neutral)
-                       accuracy_low = max(0, 100 - mape_low)
-                       accuracy_avg = (accuracy_high + accuracy_neutral + accuracy_low) / 3
-                      
-                       # Track accuracy
-                       accuracy_history.append(accuracy_avg)
-                       if len(accuracy_history) > 10:
-                           accuracy_history.pop(0)
-                      
-                       if len(accuracy_history) >= min_samples:
-                           recent_avg = sum(accuracy_history[-min_samples:]) / min_samples
-                           if recent_avg >= target_accuracy:
-                               training_enabled = False
-                               print(f"🎉 Target accuracy reached! Training stopped.")
+                    rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
+                    rate_limiter.set_rate_from_bandwidth('NEUTRAL', pred['NEUTRAL'])
+                    rate_limiter.set_rate_from_bandwidth('LOW', pred['LOW'])
+                    data_history = []
+                    MAX_HISTORY = 60
+                    # In ml_processing_thread(), replace the dashboard_data section with:
+                    dashboard_data = {
+                        "A": {"allocated": pred['HIGH'] * 10, "usage": actual_bandwidths['HIGH']},
+                        "B": {"allocated": pred['NEUTRAL'] * 10, "usage": actual_bandwidths['NEUTRAL']},
+                        "C": {"allocated": pred['LOW'] * 10, "usage": actual_bandwidths['LOW']}
+                    }
 
+                    # Save to history
+                    data_history.append(dashboard_data)
+                    if len(data_history) > MAX_HISTORY:
+                        data_history.pop(0)
 
-                   # Update rate limiter based on predictions
-                  
-                   rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
-                   rate_limiter.set_rate_from_bandwidth('NEUTRAL', pred['NEUTRAL'])
-                   rate_limiter.set_rate_from_bandwidth('LOW', pred['LOW'])
-                   print(actual_bandwidths['HIGH'] * 1000000)
-                   dashboard_data = {
-                       "A": {"allocated": pred['HIGH'], "usage": actual_bandwidths['HIGH'] * 1000000},
-                       "B": {"allocated": pred['NEUTRAL'], "usage": actual_bandwidths['NEUTRAL'] * 1000000},
-                       "C": {"allocated": pred['LOW'], "usage": actual_bandwidths['LOW'] * 1000000}
-                   }
+                    # Write both current and history
+                    with open("dashboard_data.json", "w") as f:
+                        json.dump({"current": dashboard_data, "history": data_history}, f)
 
-
-                   with open("dashboard_data.json", "w") as f:
-                       json.dump(dashboard_data, f)
                                       
-                   result = f"Predicted Bandwidths: HIGH={pred['HIGH']} Mbps, NEUTRAL={pred['NEUTRAL']} Mbps, LOW={pred['LOW']} Mbps"
-                   print(f"[ML Thread] ML Model Result: {result}\n")
-
-
-       except Exception as e:
-           print(f"[ML Thread] Error: {e}")
+                    result = f"Predicted Bandwidths: HIGH={pred['HIGH']} Mbps, NEUTRAL={pred['NEUTRAL']} Mbps, LOW={pred['LOW']} Mbps"
+                    print(f"[ML Thread] ML Model Result: {result}\n")
+        except Exception as e:
+            print(f"[ML Thread] Error: {e}")
 
 
 # -----------------------------
