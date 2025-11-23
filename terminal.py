@@ -161,7 +161,7 @@ def udp_packet_rerouter(client, listen_ip="0.0.0.0", listen_port=5005, buffer_si
 
     TAG_TO_PRIORITY = {
         'A': 'HIGH',
-        'B': 'HIGH', 
+        'B': 'NEUTRAL', 
         'C': 'LOW',
     }
     while True:
@@ -291,9 +291,9 @@ def ml_processing_thread(stats_queue, device_name):
                         
                         if len(accuracy_history) >= min_samples:
                             recent_avg = sum(accuracy_history[-min_samples:]) / min_samples
-                        if recent_avg >= target_accuracy:
-                            training_enabled = False
-                            print(f"🎉 Target accuracy reached! Training stopped.")
+                            if recent_avg >= target_accuracy:
+                                training_enabled = False
+                                print(f"🎉 Target accuracy reached! Training stopped.")
 
                     # Update rate limiter based on predictions
                     rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
