@@ -21,11 +21,15 @@ counts_lock = threading.Lock()
 # Queue for sending counts to processing thread
 stats_queue = queue.Queue()
 stats_list=[]
+latest_allocated_bw = {
+    "HIGH": 0.0,
+    "NEUTRAL": 0.0,
+    "LOW": 0.0
+}
 
 
 
-
-manual_overrides = (None, None) #("Priority, Bandwidth in Mbps")
+manual_overrides = (None, None) #("Priority, Bandwidth in bps")
 class AdaptiveRateChanger:
    def __init__(self, max_rate=10000, packet_size_bytes=1024):
        self.max_rate = max_rate
@@ -55,7 +59,7 @@ class AdaptiveRateChanger:
                self.rates[priority] = 5  # Minimum rate
            else:
                # Convert Mbps to packets per second
-               bits_per_second = bandwidth_mbps * 1_000_000
+               bits_per_second = bandwidth_mbps * 1000000
                bits_per_packet = self.packet_size_bytes * 8
                packets_per_second = bits_per_second / bits_per_packet
               
@@ -174,7 +178,7 @@ def udp_packet_rerouter(client, listen_ip="0.0.0.0", listen_port=5005, buffer_si
 
    TAG_TO_PRIORITY = {
        'A': 'HIGH',
-       'B': 'NEUTRAL',
+       'B': 'HIGH',
        'C': 'LOW',
    }
    while True:
@@ -191,11 +195,11 @@ def udp_packet_rerouter(client, listen_ip="0.0.0.0", listen_port=5005, buffer_si
       
        priority = TAG_TO_PRIORITY.get(tag, 'LOW')
        delay = rate_limiter.get_delay(priority)
-       if rate_limiter.check_and_update(priority):
-           # Forward packet via MQTT
+       if rate_limiter.check_and_update(priority) :
            rerouter(client, tag, decoded, data)
        else:
            # Drop packet due to rate limiting
+           
            dropped_counts[tag] += 1
            if dropped_counts[tag] % 100 == 0:  # Log every 100 drops
                print(f"[{DEVICE_NAME}]: Dropped {dropped_counts[tag]} {tag} packets (rate limited)")
@@ -219,7 +223,15 @@ def rerouter(client, tag, content, raw_data):
   
    # Get target topic from mapping
    target_topic = tag_routing.get(tag)
+   
    if target_topic:
+       priority = DEVICE_TO_PRIORITY.get(target_topic.split("/")[0], "LOW")
+       with feedback_lock:
+           actual_bw = feedback_data[target_topic.split("/")[0]]["bandwidth"]
+           allocated_bw = latest_allocated_bw[priority]
+       if actual_bw > allocated_bw:
+           print(f"[{DEVICE_NAME}] HARD STOP: {priority} actual BW {actual_bw:.2f} > allocated {allocated_bw:.2f}. Packet dropped.")
+           return
        client.publish(target_topic, content)
        #print(f"[{DEVICE_NAME}] Rerouted UDP packet to {target_topic} | TYPE: {tag} | Size: {len(raw_data)}")
    else:
@@ -255,7 +267,7 @@ def ml_processing_thread(stats_queue, device_name):
     training_enabled = True
     accuracy_history = []
     target_accuracy = 70.0  # Target accuracy percentage to stop training
-    min_samples = 5        # Minimum samples to consider for accuracy
+    min_samples = 20        # Minimum samples to consider for accuracy
     while True:
         try:
             time.sleep(5)  # Check every 5 seconds
@@ -306,10 +318,10 @@ def ml_processing_thread(stats_queue, device_name):
                         mape_neutral = (mae_neutral / max(actual_bandwidths['NEUTRAL'], 0.01)) * 100
                         mape_low = (mae_low / max(actual_bandwidths['LOW'], 0.01)) * 100
                       
-                        accuracy_high = max(0, 100 - mape_high)
-                        accuracy_neutral = max(0, 100 - mape_neutral)
-                        accuracy_low = max(0, 100 - mape_low)
-                        accuracy_avg = (accuracy_high + accuracy_neutral + accuracy_low) / 3
+                        accuracy_high = min(max(0, 100 - mape_high), 100)
+                        accuracy_neutral = min(max(0, 100 - mape_neutral), 100)
+                        accuracy_low = min(max(0, 100 - mape_low), 100)
+                        accuracy_avg = min((accuracy_high + accuracy_neutral + accuracy_low) / 3, 100)
                       
                         # Track accuracy
                         accuracy_history.append(accuracy_avg)
@@ -324,7 +336,6 @@ def ml_processing_thread(stats_queue, device_name):
 
 
                     # Update rate limiter based on predictions
-                  
                     rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
                     rate_limiter.set_rate_from_bandwidth('NEUTRAL', pred['NEUTRAL'])
                     rate_limiter.set_rate_from_bandwidth('LOW', pred['LOW'])
@@ -337,6 +348,10 @@ def ml_processing_thread(stats_queue, device_name):
                         "C": {"allocated": pred['LOW'] * 10, "usage": actual_bandwidths['LOW']},
                         "ACC": {"accuracy": accuracy_avg}
                     }
+
+                    latest_allocated_bw["HIGH"] = pred["HIGH"]
+                    latest_allocated_bw["NEUTRAL"] = pred["NEUTRAL"]
+                    latest_allocated_bw["LOW"] = pred["LOW"]
 
                     # Save to history
                     data_history.append(dashboard_data)

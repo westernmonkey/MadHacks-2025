@@ -196,21 +196,22 @@
               const response = await fetch('dashboard_data.json', {cache: "no-store"});
               const data = await response.json();
             
-              allocation.A = data.current.A.allocated;
+              allocation.A = Math.round(data.current.A.allocated);
               usage.A = data.current.A.usage;
               demand.A = data.current.A.usage;
 
               console.log(allocation)
             
-              allocation.B = data.current.B.allocated;
+              allocation.B = Math.round(data.current.B.allocated);
               usage.B = data.current.B.usage;
               demand.B = data.current.B.usage;
             
-              allocation.C = data.current.C.allocated;
+              allocation.C = Math.round(data.current.C.allocated);
               usage.C = data.current.C.usage;
               demand.C = data.current.C.usage;
 
-              accuracy = data.current.ACC.accuracy;
+              accuracy = data.current.ACC.accuracy / 10; // Scale to 0-1
+              if (accuracy > 100) accuracy = 100;
           } catch (e) {
               console.log("Waiting for data...", e);
           }
@@ -273,9 +274,9 @@
           document.getElementById('used-c').innerText = usage.C.toFixed(0);
           document.getElementById('bar-c').style.width = Math.min(100, (usage.C/allocation.C)*100) + "%";
 
-          const accuracyPercent = (accuracy * 100).toFixed(2);
+          const accuracyPercent = (accuracy*10).toFixed(2);
           document.getElementById('accuracy-value').innerText = accuracyPercent;
-          document.getElementById('accuracy-circle-text').innerText = Math.round(accuracy * 100) + '%';
+          document.getElementById('accuracy-circle-text').innerText = Math.round(accuracy * 10) + '%';
             
           const circle = document.getElementById('accuracy-circle');
           if (accuracy >= 0.90) {

@@ -21,7 +21,7 @@ class LiveBandwidthPredictor(nn.Module):
             nn.init.constant_(predictor.bias, 5.0)
         
         # --- OPTIMIZER ---
-        self.optimizer = optim.SGD(self.parameters(), lr=0.000001, momentum=0.9)
+        self.optimizer = optim.Adam(self.parameters(), lr=0.0001, momentum=0.9)
         
     @property
     def slice_weights(self):
@@ -177,6 +177,7 @@ class LiveBandwidthPredictor(nn.Module):
         latencies_dict: {'HIGH': latency_ms, 'NEUTRAL': latency_ms, 'LOW': latency_ms} (optional)
         """
         # 1. Prepare Inputs
+        torch.manual_seed(42)
         high, neutral, low = self._prepare_input(packets_dict)
         
         # 2. Prepare Targets
