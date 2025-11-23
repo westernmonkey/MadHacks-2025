@@ -6,6 +6,7 @@ BROKER_IP = "10.141.41.70"   # HUB IP
 DEVICE_NAME = ""             # laptop2, laptop3
 PACKET_COUNT = 100           # Number of packets per latency check
 counter = 0
+byte_count = 0
 
 # -----------------------------
 # ASK USER WHICH DEVICE THIS IS
@@ -26,10 +27,33 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(INBOX_TOPIC)
     print(f"[{DEVICE_NAME}] Subscribed to: {INBOX_TOPIC}")
 
+def reporter_thread(client):
+   global byte_count
+   print(f"[{DEVICE_NAME}] 📊 Background Reporting Active...")
+  
+   while True:
+       time.sleep(1.0) # Wait 1 second
+      
+       # Calculate Bandwidth (Bytes -> Megabits)
+       mbps = (byte_count * 8) / 1_000_000
+      
+       # Send to Laptop 1 (The Brain)
+       client.publish(OUTBOX_TOPIC, "M " + str(mbps))
+       print(f"[{DEVICE_NAME}] Sent to laptop1: M {mbps}")
+      
+       # Optional: Debug print if traffic is flowing
+       # if stats["packet_count"] > 0:
+       #     print(f"   (Debug) Sent stats: {report['mbps']} Mbps")
+
+
+       # Reset for next second
+       byte_count = 0
 
 def on_message(client, userdata, msg):
-    global counter
     t1 = time.time()
+    global counter
+    global byte_count
+    byte_count += 1
     message = msg.payload.decode()
     print(f"\n[{DEVICE_NAME}] Received on {msg.topic}: {message}")
 
@@ -69,8 +93,8 @@ def sender_thread(client, t1):
     try:
         input_msg = time.time() - t1
         # Laptop2 and Laptop3 always send to laptop1
-        client.publish("laptop1/inbox", input_msg)
-        print(f"[{DEVICE_NAME}] Sent to laptop1: {input_msg}")
+        client.publish("laptop1/inbox", "L " + str(input_msg))
+        print(f"[{DEVICE_NAME}] Sent to laptop1: L {input_msg}")
     except KeyboardInterrupt:
         print("Exiting sender thread...")
 
@@ -88,4 +112,4 @@ client.connect(BROKER_IP, 1883, 60)
 threading.Thread(target=client.loop_forever, daemon=True).start()
 
 # Run sender in main thread
-input()
+reporter_thread(client)
