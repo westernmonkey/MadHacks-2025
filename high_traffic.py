@@ -45,7 +45,6 @@ def send_udp_packets(target_ip, target_port, packet_size, pps, duration, tags):
         now = time.time()
         if now - last_report >= 1.0:
             print(f"Sent {sent_packets} packets ({sent_bytes} bytes) in last {now - last_report:.2f} seconds")
-            sent_packets = 0
             sent_bytes = 0
             last_report = now
 
