@@ -105,15 +105,46 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(INBOX_TOPIC)
     print(f"[{DEVICE_NAME}] Subscribed to: {INBOX_TOPIC}")
 
+feedback_data = {
+    'laptop2': {'bandwidth': 0.0, 'latency': 0.0, 'priority': 'HIGH'},     # laptop2 handles A,B (HIGH/NEUTRAL)
+    'laptop3': {'bandwidth': 0.0, 'latency': 0.0, 'priority': 'NEUTRAL'},  # laptop3 handles C (LOW)
+}
+feedback_lock = threading.Lock()
+
+DEVICE_TO_PRIORITY = {
+    'laptop2': 'HIGH',      # laptop2 gets A and B, treat as HIGH
+    'laptop3': 'NEUTRAL',   # laptop3 gets C, treat as NEUTRAL
+}
 
 def on_message(client, userdata, msg):
     message = msg.payload.decode()
     print(f"\n[{DEVICE_NAME}] Received on {msg.topic}: {message}")
 
-    # Save message to a file
-    #with open(SAVE_FILE, "a") as f:
-     #   f.write(f"{time.ctime()} - {msg.topic}: {message}\n")
+    if message[1] == "M" or message[1] == "L":
+        try:
+            # Extract device from topic (e.g., "laptop2/inbox" -> "laptop2")
+            device = msg.topic.split("/")[0]
+            
+            if message[1] == "M":
+                # Bandwidth message: M123.45 means 123.45 Mbps
+                x = message[0:1]
+                bandwidth = float(message[2:])
+                with feedback_lock:
+                    if device in feedback_data:
+                        feedback_data[f'laptop{x}']['bandwidth'] = bandwidth
+                        print(f"[{DEVICE_NAME}] 📊 {device} Bandwidth: {bandwidth:.2f} Mbps")
+            elif message[1] == "L":
+                # Latency message: L45.67 means 45.67 ms
+                x = message[0:1]
+                latency = float(message[2:])
+                with feedback_lock:
+                    if device in feedback_data:
+                        feedback_data[f'laptop{x}']['latency'] = latency
+                        print(f"[{DEVICE_NAME}] ⏱️  {device} Latency: {latency:.2f} ms")
 
+        except (ValueError, IndexError) as e:
+            print(f"[{DEVICE_NAME}] Error parsing feedback '{message}': {e}")
+    
 
 # -----------------------------
 # SENDER THREAD
@@ -130,9 +161,8 @@ def udp_packet_rerouter(client, listen_ip="0.0.0.0", listen_port=5005, buffer_si
 
     TAG_TO_PRIORITY = {
         'A': 'HIGH',
-        'B': 'NEUTRAL', 
+        'B': 'HIGH', 
         'C': 'LOW',
-        'D': 'LOW'
     }
     while True:
         data, addr = sock.recvfrom(buffer_size)
@@ -202,6 +232,10 @@ def ml_processing_thread(stats_queue, device_name):
         print("[ML Thread] Warning: ml_model.py not found. ML processing disabled.")
         return
     ml_model = LiveBandwidthPredictor(max_total_bandwidth=1000.0)
+    training_enabled = True
+    accuracy_history = []
+    target_accuracy = 70.0  # Target accuracy percentage to stop training
+    min_samples = 5        # Minimum samples to consider for accuracy
     while True:
         try:
             time.sleep(5)  # Check every 5 seconds
@@ -213,11 +247,61 @@ def ml_processing_thread(stats_queue, device_name):
                     # Extract just the message text
                     
                     # Call your ML model
-                    print(stats)
+                    with feedback_lock:
+                        actual_bandwidths = {
+                            'HIGH': feedback_data['laptop2']['bandwidth'],
+                            'NEUTRAL': feedback_data['laptop2']['bandwidth'],
+                            'LOW': feedback_data['laptop3']['bandwidth']
+                        }
+                        
+                        
+                        latencies = {
+                            'HIGH': feedback_data['laptop2']['latency'],
+                            'NEUTRAL': feedback_data['laptop2']['latency'],
+                            'LOW': feedback_data['laptop3']['latency']
+                        }
 
                     pred = ml_model.predict(stats)
+                    
+                    if training_enabled:
+                        train_predictions, errors = ml_model.train_with_feedback(
+                            stats, 
+                            actual_bandwidths,
+                            latencies
+                        )
+                        
+                        # Calculate accuracy
+                        mae_high = abs(errors[0])
+                        mae_neutral = abs(errors[1])
+                        mae_low = abs(errors[2])
+                        
+                        mape_high = (mae_high / max(actual_bandwidths['HIGH'], 0.01)) * 100
+                        mape_neutral = (mae_neutral / max(actual_bandwidths['NEUTRAL'], 0.01)) * 100
+                        mape_low = (mae_low / max(actual_bandwidths['LOW'], 0.01)) * 100
+                        
+                        accuracy_high = max(0, 100 - mape_high)
+                        accuracy_neutral = max(0, 100 - mape_neutral)
+                        accuracy_low = max(0, 100 - mape_low)
+                        accuracy_avg = (accuracy_high + accuracy_neutral + accuracy_low) / 3
+                        
+                        # Track accuracy
+                        accuracy_history.append(accuracy_avg)
+                        if len(accuracy_history) > 10:
+                            accuracy_history.pop(0)
+                        
+                        if len(accuracy_history) >= min_samples:
+                            recent_avg = sum(accuracy_history[-min_samples:]) / min_samples
+                        if recent_avg >= target_accuracy:
+                            training_enabled = False
+                            print(f"🎉 Target accuracy reached! Training stopped.")
+
+                    # Update rate limiter based on predictions
+                    rate_limiter.set_rate_from_bandwidth('HIGH', pred['HIGH'])
+                    rate_limiter.set_rate_from_bandwidth('NEUTRAL', pred['NEUTRAL'])
+                    rate_limiter.set_rate_from_bandwidth('LOW', pred['LOW'])
+                    
                     result = f"Predicted Bandwidths: HIGH={pred['HIGH']} Mbps, NEUTRAL={pred['NEUTRAL']} Mbps, LOW={pred['LOW']} Mbps"
-                    #print(f"[ML Thread] ML Model Result: {result}\n")
+                    print(f"[ML Thread] ML Model Result: {result}\n")
 
         except Exception as e:
             print(f"[ML Thread] Error: {e}")
