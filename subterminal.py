@@ -33,7 +33,7 @@ def reporter_thread(client):
    print(f"[{DEVICE_NAME}] 📊 Background Reporting Active...")
   
    while True:
-       time.sleep(1.0) # Wait 1 second
+       time.sleep(0.5) # Wait 0.5 second
       
        # Calculate Bandwidth (Bytes -> Megabits)
        bps = (byte_count * 13)
@@ -58,17 +58,17 @@ def on_message(client, userdata, msg):
         num1 = int(message[3:7])
         num2 = int(message[7:11])
         sum = num1 + num2
-        time.sleep(0.000001)
+        time.sleep(0.00001)
     if message[0] == 'B':
         num1 = int(message[3:7])
         num2 = int(message[7:11])
         diff = num1 - num2
-        time.sleep(0.000001)
+        time.sleep(0.00001)
     if message[0] == 'C':
         num1 = int(message[3:7])
         num2 = int(message[7:11])
         product = num1 * num2
-        time.sleep(0.000001)
+        time.sleep(0.00001)
 
     if counter != 0:
         counter = (counter + 1) % PACKET_COUNT
