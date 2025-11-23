@@ -334,7 +334,8 @@ def ml_processing_thread(stats_queue, device_name):
                     dashboard_data = {
                         "A": {"allocated": pred['HIGH'] * 10, "usage": actual_bandwidths['HIGH']},
                         "B": {"allocated": pred['NEUTRAL'] * 10, "usage": actual_bandwidths['NEUTRAL']},
-                        "C": {"allocated": pred['LOW'] * 10, "usage": actual_bandwidths['LOW']}
+                        "C": {"allocated": pred['LOW'] * 10, "usage": actual_bandwidths['LOW']},
+                        "ACC": {"accuracy": accuracy_avg}
                     }
 
                     # Save to history

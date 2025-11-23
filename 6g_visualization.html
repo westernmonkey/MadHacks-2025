@@ -129,6 +129,20 @@
                   <canvas id="chartC"></canvas>
               </div>
           </div>
+
+          <div class="mt-6 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-bold text-gray-400 uppercase mb-1">Model Accuracy</p>
+                    <p class="text-4xl font-black text-gray-800"><span id="accuracy-value">0.00</span><span class="text-lg font-normal text-gray-400">%</span></p>
+                </div>
+                <div class="text-right">
+                    <div class="w-24 h-24 rounded-full border-8 border-gray-200 flex items-center justify-center" id="accuracy-circle">
+                        <span class="text-2xl font-bold text-gray-700" id="accuracy-circle-text">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
       </div>
   </div>
 
@@ -152,6 +166,7 @@
       let demand = { A: 50, B: 150, C: 250 };
       let allocation = { A: 100, B: 300, C: 400 };
       let usage = { A: 50, B: 150, C: 250 };
+      let accuracy = 0;
     
       // Data Buffers
       const labels = Array(MAX_POINTS).fill('');
@@ -194,6 +209,8 @@
               allocation.C = data.current.C.allocated;
               usage.C = data.current.C.usage;
               demand.C = data.current.C.usage;
+
+              accuracy = data.current.ACC.accuracy;
           } catch (e) {
               console.log("Waiting for data...", e);
           }
@@ -256,9 +273,18 @@
           document.getElementById('used-c').innerText = usage.C.toFixed(0);
           document.getElementById('bar-c').style.width = Math.min(100, (usage.C/allocation.C)*100) + "%";
 
-
-
-
+          const accuracyPercent = (accuracy * 100).toFixed(2);
+          document.getElementById('accuracy-value').innerText = accuracyPercent;
+          document.getElementById('accuracy-circle-text').innerText = Math.round(accuracy * 100) + '%';
+            
+          const circle = document.getElementById('accuracy-circle');
+          if (accuracy >= 0.90) {
+              circle.style.borderColor = '#10b981'; // Green
+          } else if (accuracy >= 0.75) {
+              circle.style.borderColor = '#f59e0b'; // Amber
+          } else {
+              circle.style.borderColor = '#ef4444'; // Red
+          }
           const now = new Date();
           const label = now.getSeconds() % 5 === 0 ? now.toLocaleTimeString([], {minute:'2-digit', second:'2-digit'}) : '';
           labels.push(label); labels.shift();
