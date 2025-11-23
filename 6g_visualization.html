@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6G Slicing: Limit vs Usage</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; height: 220px; width: 100%; }
+        .chart-card { 
+            border: 1px solid #e5e7eb; 
+            border-radius: 0.5rem; 
+            padding: 1rem; 
+            margin-bottom: 1rem; 
+            background: white; 
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); 
+            transition: all 0.3s ease;
+        }
+        .squeezed { border-color: #ef4444; background-color: #fef2f2; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen p-4 sm:p-8">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'high': '#dc2626',    // Red
+                        'neutral': '#d97706', // Amber
+                        'low': '#2563eb',     // Blue
+                    }
+                }
+            }
+        }
+    </script>
+    <div class="max-w-6xl mx-auto">
+        <div class="flex justify-between items-end mb-6">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-800 mb-1">6G Resource Arbitrator</h1>
+                <p class="text-slate-500 text-sm">
+                    <span class="inline-block w-3 h-3 border-b-2 border-gray-500 border-dashed mr-1"></span> <strong>Allocated Cap</strong> (Limit) vs 
+                    <span class="inline-block w-3 h-3 bg-gray-400 mr-1"></span> <strong>Actual Usage</strong> (Traffic).
+                </p>
+            </div>
+            <div class="text-right">
+                <div id="network-status" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-2"></span>
+                    NETWORK STABLE
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- A: Medical -->
+            <div class="bg-white p-4 rounded-lg border-t-4 border-high shadow-sm relative overflow-hidden">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-400 uppercase">Medical (Priority 1)</p>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <p class="text-3xl font-black text-gray-800"><span id="alloc-a">0</span> <span class="text-sm font-normal text-gray-400">Cap</span></p>
+                            <p class="text-sm font-bold text-red-600">Using: <span id="used-a">0</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 h-1.5 mt-4 rounded-full overflow-hidden">
+                    <div id="bar-a" class="bg-red-600 h-full" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- B: Normal -->
+            <div class="bg-white p-4 rounded-lg border-t-4 border-neutral shadow-sm" id="card-b-container">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-400 uppercase">Normal (Priority 2)</p>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <p class="text-3xl font-black text-gray-800"><span id="alloc-b">0</span> <span class="text-sm font-normal text-gray-400">Cap</span></p>
+                            <p class="text-sm font-bold text-amber-600">Using: <span id="used-b">0</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 h-1.5 mt-4 rounded-full overflow-hidden">
+                    <div id="bar-b" class="bg-amber-500 h-full" style="width: 0%"></div>
+                </div>
+                <p id="throttled-msg-b" class="text-xs text-red-500 font-bold mt-1 hidden">⚠️ Throttled!</p>
+            </div>
+
+            <!-- C: Netflix -->
+            <div class="bg-white p-4 rounded-lg border-t-4 border-low shadow-sm" id="card-c-container">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-400 uppercase">Netflix (Priority 3)</p>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <p class="text-3xl font-black text-gray-800"><span id="alloc-c">0</span> <span class="text-sm font-normal text-gray-400">Cap</span></p>
+                            <p class="text-sm font-bold text-blue-600">Using: <span id="used-c">0</span></p>
+                        </div>
+                    </div>
+                </div>
+                <div class="w-full bg-gray-200 h-1.5 mt-4 rounded-full overflow-hidden">
+                    <div id="bar-c" class="bg-blue-500 h-full" style="width: 0%"></div>
+                </div>
+                <p id="throttled-msg-c" class="text-xs text-red-500 font-bold mt-1 hidden">⚠️ Throttled!</p>
+            </div>
+        </div>
+
+        <!-- Graphs -->
+        <div class="grid grid-cols-1 gap-4">
+            <div class="chart-card">
+                <div class="chart-container">
+                    <canvas id="chartA"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-container">
+                    <canvas id="chartB"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-container">
+                    <canvas id="chartC"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Terminal Log -->
+        <div class="mt-6 bg-slate-900 rounded-lg p-4 font-mono text-xs text-green-400 h-40 overflow-y-auto shadow-inner" id="terminal">
+            <div>> System initialized. Monitoring slices...</div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG ---
+        const MAX_CAPACITY = 800;
+        const MAX_POINTS = 60;
+        const ALLOCATION_STEP = 50; // Steps for the "Straight Line" look
+        
+        let tick = 0;
+        let eventMode = "NORMAL"; 
+        let eventCounter = 0;
+
+        // State Objects
+        let demand = { A: 50, B: 150, C: 250 }; 
+        let allocation = { A: 100, B: 300, C: 400 }; 
+        let usage = { A: 50, B: 150, C: 250 }; 
+        
+        // Data Buffers
+        const labels = Array(MAX_POINTS).fill('');
+        const d_alloc_A = Array(MAX_POINTS).fill(null); const d_used_A = Array(MAX_POINTS).fill(null);
+        const d_alloc_B = Array(MAX_POINTS).fill(null); const d_used_B = Array(MAX_POINTS).fill(null);
+        const d_alloc_C = Array(MAX_POINTS).fill(null); const d_used_C = Array(MAX_POINTS).fill(null);
+
+        let chartA, chartB, chartC;
+
+        function loop() {
+            updatePhysics();   
+            runArbitrator();   
+            updateUI();        
+        }
+
+        function updatePhysics() {
+            // 1. Random Traffic Wiggles
+            demand.A = Math.max(20, demand.A + rand(-10, 10));
+            demand.B = Math.max(100, demand.B + rand(-15, 15));
+            demand.C = Math.max(100, demand.C + rand(-20, 20));
+
+            // 2. Event State Machine
+            if (eventCounter > 0) {
+                eventCounter--;
+                if (eventMode === "MEDICAL_SURGE") {
+                    demand.A = clamp(demand.A + 50, 300, 750); 
+                } 
+                else if (eventMode === "NETFLIX_SURGE") {
+                    demand.C = clamp(demand.C + 50, 500, 900); 
+                }
+            } else {
+                if (Math.random() < 0.03) pickNewEvent();
+                else {
+                    demand.A = lerp(demand.A, 50, 0.1);
+                    demand.B = lerp(demand.B, 200, 0.05);
+                    demand.C = lerp(demand.C, 300, 0.05);
+                }
+            }
+        }
+
+        function pickNewEvent() {
+            const r = Math.random();
+            if (r < 0.5) {
+                eventMode = "MEDICAL_SURGE";
+                eventCounter = 25; 
+                log("🚨 EMERGENCY: Medical Priority Activated.", "text-red-400 font-bold");
+            } else {
+                eventMode = "NETFLIX_SURGE";
+                eventCounter = 35;
+                log("📺 LOAD: Netflix traffic spike.", "text-blue-300");
+            }
+        }
+
+        function runArbitrator() {
+            // 1. Determine Contracts (The Steps) based on Mode
+            if (eventMode === "NORMAL") {
+                allocation.A = 100; 
+                allocation.B = 300; 
+                allocation.C = 400; 
+            }
+            else if (eventMode === "MEDICAL_SURGE") {
+                allocation.A = 750; // Huge Step Up
+                allocation.B = 25;  // Squeezed
+                allocation.C = 25;  // Squeezed
+            }
+            else if (eventMode === "NETFLIX_SURGE") {
+                allocation.A = 100; 
+                allocation.B = 200; 
+                allocation.C = 500; // Limited Step Up (Best Effort)
+            }
+
+            // 2. Calculate Usage (Capped by Allocation)
+            usage.A = Math.min(demand.A, allocation.A);
+            usage.B = Math.min(demand.B, allocation.B);
+            usage.C = Math.min(demand.C, allocation.C);
+
+            // UI Throttling Checks
+            checkThrottling('b', demand.B, allocation.B);
+            checkThrottling('c', demand.C, allocation.C);
+        }
+
+        function checkThrottling(id, req, alloc) {
+            const card = document.getElementById(`card-${id}-container`);
+            const msg = document.getElementById(`throttled-msg-${id}`);
+            if (req > alloc + 10) {
+                card.classList.add('squeezed');
+                if (msg) msg.classList.remove('hidden');
+            } else {
+                card.classList.remove('squeezed');
+                if (msg) msg.classList.add('hidden');
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('alloc-a').innerText = allocation.A;
+            document.getElementById('used-a').innerText = usage.A.toFixed(0);
+            document.getElementById('bar-a').style.width = Math.min(100, (usage.A/allocation.A)*100) + "%";
+
+            document.getElementById('alloc-b').innerText = allocation.B;
+            document.getElementById('used-b').innerText = usage.B.toFixed(0);
+            document.getElementById('bar-b').style.width = Math.min(100, (usage.B/allocation.B)*100) + "%";
+
+            document.getElementById('alloc-c').innerText = allocation.C;
+            document.getElementById('used-c').innerText = usage.C.toFixed(0);
+            document.getElementById('bar-c').style.width = Math.min(100, (usage.C/allocation.C)*100) + "%";
+
+            const now = new Date();
+            const label = now.getSeconds() % 5 === 0 ? now.toLocaleTimeString([], {minute:'2-digit', second:'2-digit'}) : '';
+            labels.push(label); labels.shift();
+
+            pushData(d_alloc_A, allocation.A); pushData(d_used_A, usage.A);
+            pushData(d_alloc_B, allocation.B); pushData(d_used_B, usage.B);
+            pushData(d_alloc_C, allocation.C); pushData(d_used_C, usage.C);
+            
+            chartA.update('none');
+            chartB.update('none');
+            chartC.update('none');
+        }
+
+        function rand(min, max) { return Math.random() * (max - min) + min; }
+        function clamp(val, min, max) { return Math.min(Math.max(val, min), max); }
+        function pushData(arr, val) { arr.push(val); arr.shift(); }
+        function lerp(start, end, t) { return start * (1 - t) + end * t; }
+        
+        function log(msg, classes = "text-gray-300") {
+            const term = document.getElementById('terminal');
+            const line = document.createElement('div');
+            const time = new Date().toLocaleTimeString().split(' ')[0];
+            line.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="${classes}">${msg}</span>`;
+            term.prepend(line);
+            if (term.children.length > 20) term.lastChild.remove();
+        }
+
+        function initChart(ctx, label, color, dAlloc, dUsed) {
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Allocated Cap',
+                            data: dAlloc,
+                            borderColor: '#64748b', // Gray 500
+                            borderDash: [5, 5], // Dotted Line
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            tension: 0, // Straight Lines (Stepped)
+                            stepped: true, // Creates the "Horizontal Steps" look
+                            pointRadius: 0,
+                            order: 1
+                        },
+                        {
+                            label: 'Actual Usage',
+                            data: dUsed,
+                            borderColor: 'transparent',
+                            backgroundColor: color + '60', // More visible fill
+                            fill: true,
+                            tension: 0.4, // Wavy Usage
+                            pointRadius: 0,
+                            order: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { intersect: false },
+                    scales: {
+                        y: { min: 0, suggestedMax: 800, grid: { color: '#f1f5f9' } },
+                        x: { display: false }
+                    },
+                    plugins: { legend: { display: true } }
+                }
+            });
+        }
+
+        window.onload = () => {
+            chartA = initChart(document.getElementById('chartA').getContext('2d'), 'Slice A: Medical', '#dc2626', d_alloc_A, d_used_A);
+            chartB = initChart(document.getElementById('chartB').getContext('2d'), 'Slice B: Normal', '#d97706', d_alloc_B, d_used_B);
+            chartC = initChart(document.getElementById('chartC').getContext('2d'), 'Slice C: Netflix', '#2563eb', d_alloc_C, d_used_C);
+            
+            setInterval(loop, 500);
+        };
+    </script>
+</body>
+</html>
