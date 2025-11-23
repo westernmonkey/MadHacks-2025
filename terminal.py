@@ -5,6 +5,7 @@ import os
 
 BROKER_IP = "10.141.41.70"   # HUB IP
 DEVICE_NAME = ""             # laptop1, laptop2, laptop3
+input_msg = ""
 
 # -----------------------------
 # ASK USER WHICH DEVICE THIS IS
@@ -44,25 +45,25 @@ def sender_thread(client):
 
     while True:
         try:
-            msg = input()
-            if msg.strip():
+            input_msg = input()
+            if input_msg.strip():
                 if DEVICE_NAME == "laptop1":
                     # Laptop1 can send to laptop2 or laptop3
-                    if msg.startswith("@laptop2 "):
-                        actual_msg = msg[9:]  # Remove "@laptop2 "
+                    if input_msg.startswith("@laptop2 "):
+                        actual_msg = input_msg[9:]  # Remove "@laptop2 "
                         print(actual_msg)
                         client.publish("laptop2/inbox", actual_msg)
                         print(f"[{DEVICE_NAME}] Sent to laptop2: {actual_msg}")
-                    elif msg.startswith("@laptop3 "):
-                        actual_msg = msg[9:]  # Remove "@laptop3 "
+                    elif input_msg.startswith("@laptop3 "):
+                        actual_msg = input_msg[9:]  # Remove "@laptop3 "
                         client.publish("laptop3/inbox", actual_msg)
                         print(f"[{DEVICE_NAME}] Sent to laptop3: {actual_msg}")
                     else:
                         print("Format: @laptop2 message OR @laptop3 message")
                 else:
                     # Laptop2 and Laptop3 always send to laptop1
-                    client.publish("laptop1/inbox", msg)
-                    print(f"[{DEVICE_NAME}] Sent to laptop1: {msg}")
+                    client.publish("laptop1/inbox", input_msg)
+                    print(f"[{DEVICE_NAME}] Sent to laptop1: {input_msg}")
         except KeyboardInterrupt:
             print("Exiting sender thread...")
             break
